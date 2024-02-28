@@ -71,14 +71,17 @@ enum class EmojiListMode {
 	Full,
 	TopicIcon,
 	EmojiStatus,
+	ChannelStatus,
 	FullReactions,
 	RecentReactions,
 	UserpicBuilder,
+	BackgroundEmoji,
 };
 
 struct EmojiListDescriptor {
 	std::shared_ptr<Show> show;
 	EmojiListMode mode = EmojiListMode::Full;
+	Fn<QColor()> customTextColor;
 	Fn<bool()> paused;
 	std::vector<DocumentId> customRecentList;
 	Fn<std::unique_ptr<Ui::Text::CustomEmoji>(
@@ -114,6 +117,7 @@ public:
 	void showSet(uint64 setId);
 	[[nodiscard]] uint64 currentSet(int yOffset) const;
 	void setAllowWithoutPremium(bool allow);
+	void showMegagroupSet(ChannelData *megagroup);
 
 	// Ui::AbstractTooltipShower interface.
 	QString tooltipText() const override;
@@ -254,6 +258,13 @@ private:
 	void colorChosen(EmojiChosen data);
 	bool checkPickerHide();
 	void refreshCustom();
+	enum class GroupStickersPlace {
+		Visible,
+		Hidden,
+	};
+	void refreshMegagroupStickers(
+		Fn<void(uint64 setId, bool installed)> push,
+		GroupStickersPlace place);
 	void unloadNotSeenCustom(int visibleTop, int visibleBottom);
 	void unloadAllCustom();
 	void unloadCustomIn(const SectionInfo &info);
@@ -337,6 +348,7 @@ private:
 
 	void displaySet(uint64 setId);
 	void removeSet(uint64 setId);
+	void removeMegagroupSet(bool locally);
 
 	void initButton(RightButton &button, const QString &text, bool gradient);
 	[[nodiscard]] std::unique_ptr<Ui::RippleAnimation> createButtonRipple(
@@ -365,10 +377,13 @@ private:
 	const ComposeFeatures _features;
 	Mode _mode = Mode::Full;
 	std::unique_ptr<Ui::TabbedSearch> _search;
+	MTP::Sender _api;
 	const int _staticCount = 0;
 	StickersListFooter *_footer = nullptr;
 	std::unique_ptr<GradientPremiumStar> _premiumIcon;
 	std::unique_ptr<LocalStickersManager> _localSetsManager;
+	ChannelData *_megagroupSet = nullptr;
+	uint64 _megagroupSetIdRequested = 0;
 	Fn<std::unique_ptr<Ui::Text::CustomEmoji>(
 		DocumentId,
 		Fn<void()>)> _customRecentFactory;
@@ -382,10 +397,12 @@ private:
 	bool _grabbingChosen = false;
 	QVector<EmojiPtr> _emoji[kEmojiSectionCount];
 	std::vector<CustomSet> _custom;
+	base::flat_set<DocumentId> _restrictedCustomList;
 	base::flat_map<DocumentId, CustomEmojiInstance> _customEmoji;
 	base::flat_map<
 		DocumentId,
 		std::unique_ptr<Ui::Text::CustomEmoji>> _customRecent;
+	Fn<QColor()> _customTextColor;
 	int _customSingleSize = 0;
 	bool _allowWithoutPremium = false;
 	Ui::RoundRect _overBg;

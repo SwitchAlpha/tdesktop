@@ -21,6 +21,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history.h"
 #include "calls/calls_instance.h"
 #include "core/application.h"
+#include "ui/effects/premium_graphics.h"
 #include "ui/layers/generic_box.h"
 #include "ui/text/text_utilities.h"
 #include "ui/widgets/menu/menu_action.h"
@@ -33,7 +34,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "media/streaming/media_streaming_player.h"
 #include "media/streaming/media_streaming_document.h"
 #include "settings/settings_calls.h" // Calls::AddCameraSubsection.
-#include "webrtc/webrtc_media_devices.h" // Webrtc::GetVideoInputList.
+#include "webrtc/webrtc_environment.h"
 #include "webrtc/webrtc_video_track.h"
 #include "ui/widgets/popup_menu.h"
 #include "window/window_controller.h"
@@ -45,13 +46,15 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "styles/style_boxes.h"
 #include "styles/style_chat.h"
 #include "styles/style_menu_icons.h"
+#include "styles/style_premium.h"
 
 namespace Ui {
 namespace {
 
 [[nodiscard]] bool IsCameraAvailable() {
 	return (Core::App().calls().currentCall() == nullptr)
-		&& !Webrtc::GetVideoInputList().empty();
+		&& !Core::App().mediaDevices().defaultId(
+			Webrtc::DeviceType::Camera).isEmpty();
 }
 
 void CameraBox(
@@ -1048,8 +1051,7 @@ void UserpicButton::prepareUserpicPixmap() {
 			} else {
 				const auto user = _peer->asUser();
 				auto empty = Ui::EmptyUserpic(
-					Ui::EmptyUserpic::UserpicColor(
-						Data::PeerColorIndex(_peer->id)),
+					Ui::EmptyUserpic::UserpicColor(_peer->colorIndex()),
 					((user && user->isInaccessible())
 						? Ui::EmptyUserpic::InaccessibleName()
 						: _peer->name()));

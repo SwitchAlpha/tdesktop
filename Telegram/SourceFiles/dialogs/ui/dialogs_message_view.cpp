@@ -94,12 +94,19 @@ TextWithEntities DialogsPreviewText(TextWithEntities text) {
 			EntityType::Underline,
 			EntityType::Italic,
 			EntityType::CustomEmoji,
-			EntityType::PlainLink,
+			EntityType::Colorized,
 		});
 	for (auto &entity : result.entities) {
 		if (entity.type() == EntityType::Pre) {
 			entity = EntityInText(
 				EntityType::Code,
+				entity.offset(),
+				entity.length());
+		} else if (entity.type() == EntityType::Colorized
+			&& !entity.data().isEmpty()) {
+			// Drop 'data' so that only link-color colorization takes place.
+			entity = EntityInText(
+				EntityType::Colorized,
 				entity.offset(),
 				entity.length());
 		}
@@ -160,9 +167,9 @@ void MessageView::prepare(
 	options.spoilerLoginCode = true;
 	auto preview = item->toPreview(options);
 	_leftIcon = (preview.icon == ItemPreview::Icon::ForwardedMessage)
-		? &st::dialogsMiniForwardIcon
+		? &st::dialogsMiniForward
 		: (preview.icon == ItemPreview::Icon::ReplyToStory)
-		? &st::dialogsMiniReplyStoryIcon
+		? &st::dialogsMiniReplyStory
 		: nullptr;
 	const auto hasImages = !preview.images.empty();
 	const auto history = item->history();
@@ -188,7 +195,7 @@ void MessageView::prepare(
 	TextUtilities::Trim(preview.text);
 	auto textToCache = DialogsPreviewText(std::move(preview.text));
 	_hasPlainLinkAtBegin = !textToCache.entities.empty()
-		&& (textToCache.entities.front().type() == EntityType::PlainLink);
+		&& (textToCache.entities.front().type() == EntityType::Colorized);
 	_textCache.setMarkedText(
 		st::dialogsTextStyle,
 		std::move(textToCache),
@@ -305,7 +312,6 @@ void MessageView::paint(
 		rect.setWidth(rect.width() - st::forumDialogJumpArrowSkip);
 		finalRight -= st::forumDialogJumpArrowSkip;
 	}
-	const auto lines = rect.height() / st::dialogsTextFont->height;
 	const auto pausedSpoiler = context.paused
 		|| On(PowerSaving::kChatSpoiler);
 	if (!_senderCache.isEmpty()) {
@@ -313,7 +319,7 @@ void MessageView::paint(
 			.position = rect.topLeft(),
 			.availableWidth = rect.width(),
 			.palette = palette,
-			.elisionLines = lines,
+			.elisionHeight = rect.height(),
 		});
 		rect.setLeft(rect.x() + _senderCache.maxWidth());
 		if (!_imagesCache.empty() && !_leftIcon) {
@@ -325,7 +331,7 @@ void MessageView::paint(
 
 	if (_leftIcon) {
 		const auto &icon = ThreeStateIcon(
-			*_leftIcon,
+			_leftIcon->icon,
 			context.active,
 			context.selected);
 		const auto w = (icon.width());
@@ -342,8 +348,8 @@ void MessageView::paint(
 			rect.setLeft(rect.x()
 				+ w
 				+ (_imagesCache.empty()
-					? st::dialogsMiniIconTextSkip
-					: st::dialogsMiniIconSkip));
+					? _leftIcon->skipText
+					: _leftIcon->skipMedia));
 		}
 	}
 	for (const auto &image : _imagesCache) {
@@ -381,7 +387,7 @@ void MessageView::paint(
 			.now = context.now,
 			.pausedEmoji = context.paused || On(PowerSaving::kEmojiChat),
 			.pausedSpoiler = pausedSpoiler,
-			.elisionLines = lines,
+			.elisionHeight = rect.height(),
 		});
 		rect.setLeft(rect.x() + _textCache.maxWidth());
 	}
@@ -457,7 +463,7 @@ HistoryView::ItemPreview PreviewWithSender(
 	auto fullWithOffset = tr::lng_dialogs_text_with_from(
 		tr::now,
 		lt_from_part,
-		Ui::Text::PlainLink(std::move(wrappedWithOffset.text)),
+		Ui::Text::Colorized(std::move(wrappedWithOffset.text)),
 		lt_message,
 		std::move(preview.text),
 		TextWithTagOffset<lt_from_part>::FromString);

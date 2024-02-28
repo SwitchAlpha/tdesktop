@@ -582,13 +582,12 @@ void Widget::addToHeight(int add) {
 	auto newHeight = height() + add;
 	auto newPosition = computePosition(newHeight);
 	updateGeometry(newPosition.x(), newPosition.y(), width(), newHeight);
-	Ui::Platform::UpdateOverlayed(this);
+	Ui::ForceFullRepaintSync(this);
 }
 
 void Widget::updateGeometry(int x, int y, int width, int height) {
-	setGeometry(x, y, width, height);
-	setMinimumSize(QSize(width, height));
-	setMaximumSize(QSize(width, height));
+	move(x, y);
+	setFixedSize(width, height);
 	update();
 }
 
@@ -842,7 +841,7 @@ void Notification::paintText(Painter &p) {
 		.spoiler = Ui::Text::DefaultSpoilerCache(),
 		.pausedEmoji = On(PowerSaving::kEmojiChat),
 		.pausedSpoiler = On(PowerSaving::kChatSpoiler),
-		.elisionLines = _textRect.height() / st::dialogsTextFont->height,
+		.elisionHeight = _textRect.height(),
 	});
 }
 
@@ -922,7 +921,7 @@ void Notification::updateNotifyDisplay() {
 				2 * st::dialogsTextFont->height);
 			const auto text = !_reaction.empty()
 				? (!_author.isEmpty()
-					? Ui::Text::PlainLink(_author).append(' ')
+					? Ui::Text::Colorized(_author).append(' ')
 					: TextWithEntities()
 				).append(Manager::ComposeReactionNotification(
 					_item,
@@ -935,7 +934,7 @@ void Notification::updateNotifyDisplay() {
 					.spoilerLoginCode = options.spoilerLoginCode,
 				}).text
 				: ((!_author.isEmpty()
-						? Ui::Text::PlainLink(_author)
+						? Ui::Text::Colorized(_author)
 						: TextWithEntities()
 					).append(_forwardedCount > 1
 						? ('\n' + tr::lng_forward_messages(
@@ -944,7 +943,7 @@ void Notification::updateNotifyDisplay() {
 							_forwardedCount))
 						: QString()));
 			const auto options = TextParseOptions{
-				(TextParsePlainLinks
+				(TextParseColorized
 					| TextParseMarkdown
 					| (_forwardedCount > 1 ? TextParseMultiline : 0)),
 				0,

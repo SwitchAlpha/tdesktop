@@ -15,6 +15,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_chat_participant_status.h"
 #include "data/data_forum_topic.h"
 #include "data/data_histories.h"
+#include "data/data_peer.h"
 #include "data/data_session.h"
 #include "data/data_stories.h"
 #include "data/data_thread.h"
@@ -61,6 +62,11 @@ namespace Media::Stories {
 	};
 	const auto state = std::make_shared<State>();
 	auto filterCallback = [=](not_null<Data::Thread*> thread) {
+		if (const auto user = thread->peer()->asUser()) {
+			if (user->canSendIgnoreRequirePremium()) {
+				return true;
+			}
+		}
 		return Data::CanSend(thread, ChatRestriction::SendPhotos)
 			&& Data::CanSend(thread, ChatRestriction::SendVideos);
 	};
@@ -79,9 +85,7 @@ namespace Media::Stories {
 		if (!story) {
 			return;
 		}
-		const auto user = story->peer()->asUser();
-		Assert(user != nullptr);
-
+		const auto peer = story->peer();
 		const auto error = [&] {
 			for (const auto thread : result) {
 				const auto error = GetErrorTextForSending(
@@ -115,14 +119,16 @@ namespace Media::Stories {
 				message.action.clearDraft = false;
 				api->sendMessage(std::move(message));
 			}
-			const auto peer = thread->peer();
+			const auto threadPeer = thread->peer();
 			const auto threadHistory = thread->owningHistory();
 			const auto randomId = base::RandomValue<uint64>();
 			auto sendFlags = MTPmessages_SendMedia::Flags(0);
 			if (action.replyTo) {
 				sendFlags |= MTPmessages_SendMedia::Flag::f_reply_to;
 			}
-			const auto silentPost = ShouldSendSilent(peer, action.options);
+			const auto silentPost = ShouldSendSilent(
+				threadPeer,
+				action.options);
 			if (silentPost) {
 				sendFlags |= MTPmessages_SendMedia::Flag::f_silent;
 			}
@@ -140,23 +146,23 @@ namespace Media::Stories {
 				randomId,
 				Data::Histories::PrepareMessage<MTPmessages_SendMedia>(
 					MTP_flags(sendFlags),
-					peer->input,
+					threadPeer->input,
 					Data::Histories::ReplyToPlaceholder(),
-					MTP_inputMediaStory(
-						user->inputUser,
-						MTP_int(id.story)),
+					MTP_inputMediaStory(peer->input, MTP_int(id.story)),
 					MTPstring(),
 					MTP_long(randomId),
 					MTPReplyMarkup(),
 					MTPVector<MTPMessageEntity>(),
 					MTP_int(action.options.scheduled),
 					MTP_inputPeerEmpty()
-				), [=](const MTPUpdates &result, const MTP::Response &response) {
-				done();
-			}, [=](const MTP::Error &error, const MTP::Response &response) {
-				api->sendMessageFail(error, peer, randomId);
-				done();
-			});
+				), [=](
+						const MTPUpdates &result,
+						const MTP::Response &response) {
+					done();
+				}, [=](const MTP::Error &error, const MTP::Response &response) {
+					api->sendMessageFail(error, threadPeer, randomId);
+					done();
+				});
 			++state->requests;
 		}
 	};
@@ -189,6 +195,7 @@ namespace Media::Stories {
 		.scheduleBoxStyle = (viewerStyle
 			? viewerScheduleStyle()
 			: HistoryView::ScheduleBoxStyleArgs()),
+		.premiumRequiredError = SharePremiumRequiredError(),
 	});
 }
 

@@ -27,7 +27,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/boxes/confirm_box.h"
 #include "boxes/filters/edit_filter_box.h"
 #include "boxes/premium_limits_box.h"
-#include "settings/settings_common.h"
 #include "settings/settings_folders.h"
 #include "storage/storage_media_prepare.h"
 #include "api/api_chat_filters.h"
@@ -316,7 +315,10 @@ base::unique_qptr<Ui::SideBarButton> FiltersMenu::prepareButton(
 		if (_reordering) {
 			return;
 		} else if (raw->locked()) {
-			_session->show(Box(FiltersLimitBox, &_session->session()));
+			_session->show(Box(
+				FiltersLimitBox,
+				&_session->session(),
+				std::nullopt));
 		} else if (id >= 0) {
 			_session->setActiveChatsFilter(id);
 		} else {

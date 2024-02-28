@@ -59,8 +59,8 @@ void View::updatePlayback(const Player::TrackState &state) {
 	_controller->updateVideoPlayback(state);
 }
 
-ClickHandlerPtr View::lookupLocationHandler(QPoint point) const {
-	return _controller->lookupLocationHandler(point);
+ClickHandlerPtr View::lookupAreaHandler(QPoint point) const {
+	return _controller->lookupAreaHandler(point);
 }
 
 bool View::subjumpAvailable(int delta) const {
@@ -144,6 +144,26 @@ TextWithEntities View::captionText() const {
 
 bool View::skipCaption() const {
 	return _controller->skipCaption();
+}
+
+bool View::repost() const {
+	return _controller->repost();
+}
+
+QMargins View::repostCaptionPadding() const {
+	return _controller->repostCaptionPadding();
+}
+
+void View::drawRepostInfo(
+		Painter &p,
+		int x,
+		int y,
+		int availableWidth) const {
+	_controller->drawRepostInfo(p, x, y, availableWidth);
+}
+
+RepostClickHandler View::lookupRepostHandler(QPoint position) const {
+	return _controller->lookupRepostHandler(position);
 }
 
 void View::showFullCaption() {

@@ -323,7 +323,7 @@ Panel::Panel(
 , _menuButtons(menuButtons)
 , _widget(std::make_unique<SeparatePanel>())
 , _allowClipboardRead(allowClipboardRead) {
-	_widget->setInnerSize(st::paymentsPanelSize);
+	_widget->setInnerSize(st::botWebViewPanelSize);
 	_widget->setWindowFlag(Qt::WindowStaysOnTopHint, false);
 
 	_widget->closeRequests(
@@ -364,7 +364,7 @@ Panel::Panel(
 }
 
 Panel::~Panel() {
-	_webview = nullptr;
+	base::take(_webview);
 	_progress = nullptr;
 	_widget = nullptr;
 }
@@ -494,7 +494,8 @@ bool Panel::showWebview(
 		const QString &url,
 		const Webview::ThemeParams &params,
 		rpl::producer<QString> bottomText) {
-	if (!_webview && !createWebview()) {
+	_bottomText = std::move(bottomText);
+	if (!_webview && !createWebview(params)) {
 		return false;
 	}
 	const auto allowBack = false;
@@ -503,26 +504,8 @@ bool Panel::showWebview(
 	updateThemeParams(params);
 	_webview->window.navigate(url);
 	_widget->setBackAllowed(allowBack);
-	if (bottomText) {
-		const auto &padding = st::paymentsPanelPadding;
-		const auto label = CreateChild<FlatLabel>(
-			_webviewBottom.get(),
-			std::move(bottomText),
-			st::paymentsWebviewBottom);
-		const auto height = padding.top()
-			+ label->heightNoMargins()
-			+ padding.bottom();
-		rpl::combine(
-			_webviewBottom->widthValue(),
-			label->widthValue()
-		) | rpl::start_with_next([=](int outerWidth, int width) {
-			label->move((outerWidth - width) / 2, padding.top());
-		}, label->lifetime());
-		label->show();
-		_webviewBottom->resize(_webviewBottom->width(), height);
-	}
 	_widget->setMenuAllowed([=](const Ui::Menu::MenuCallback &callback) {
-		if (_menuButtons & MenuButton::Settings) {
+		if (_hasSettingsButton) {
 			callback(tr::lng_bot_settings(tr::now), [=] {
 				postEvent("settings_button_pressed");
 			}, &st::menuIconSettings);
@@ -533,14 +516,26 @@ bool Panel::showWebview(
 			}, &st::menuIconLeave);
 		}
 		callback(tr::lng_bot_reload_page(tr::now), [=] {
-			_webview->window.reload();
+			if (_webview && _webview->window.widget()) {
+				_webview->window.reload();
+			} else if (const auto params = _delegate->botThemeParams()
+				; createWebview(params)) {
+				showWebviewProgress();
+				updateThemeParams(params);
+				_webview->window.navigate(url);
+			}
 		}, &st::menuIconRestore);
-		if (_menuButtons & MenuButton::RemoveFromMenu) {
+		const auto main = (_menuButtons & MenuButton::RemoveFromMainMenu);
+		if (main || (_menuButtons & MenuButton::RemoveFromMenu)) {
 			const auto handler = [=] {
-				_delegate->botHandleMenuButton(MenuButton::RemoveFromMenu);
+				_delegate->botHandleMenuButton(main
+					? MenuButton::RemoveFromMainMenu
+					: MenuButton::RemoveFromMenu);
 			};
 			callback({
-				.text = tr::lng_bot_remove_from_menu(tr::now),
+				.text = (main
+					? tr::lng_bot_remove_from_side_menu
+					: tr::lng_bot_remove_from_menu)(tr::now),
 				.handler = handler,
 				.icon = &st::menuIconDeleteAttention,
 				.isAttention = true,
@@ -550,15 +545,27 @@ bool Panel::showWebview(
 	return true;
 }
 
-bool Panel::createWebview() {
-	auto outer = base::make_unique_q<RpWidget>(_widget.get());
-	const auto container = outer.get();
-	_widget->showInner(std::move(outer));
-	_webviewParent = container;
-
+void Panel::createWebviewBottom() {
 	_webviewBottom = std::make_unique<RpWidget>(_widget.get());
 	const auto bottom = _webviewBottom.get();
 	bottom->show();
+
+	const auto &padding = st::paymentsPanelPadding;
+	const auto label = CreateChild<FlatLabel>(
+		_webviewBottom.get(),
+		_bottomText.value(),
+		st::paymentsWebviewBottom);
+	const auto height = padding.top()
+		+ label->heightNoMargins()
+		+ padding.bottom();
+	rpl::combine(
+		_webviewBottom->widthValue(),
+		label->widthValue()
+	) | rpl::start_with_next([=](int outerWidth, int width) {
+		label->move((outerWidth - width) / 2, padding.top());
+	}, label->lifetime());
+	label->show();
+	_webviewBottom->resize(_webviewBottom->width(), height);
 
 	bottom->heightValue(
 	) | rpl::start_with_next([=](int height) {
@@ -567,21 +574,34 @@ bool Panel::createWebview() {
 			height = _mainButton->height();
 		}
 		bottom->move(inner.x(), inner.y() + inner.height() - height);
-		container->resize(inner.width(), inner.height() - height);
+		if (const auto container = _webviewParent.data()) {
+			container->setFixedSize(inner.width(), inner.height() - height);
+		}
 		bottom->resizeToWidth(inner.width());
 	}, bottom->lifetime());
-	container->show();
+}
 
+bool Panel::createWebview(const Webview::ThemeParams &params) {
+	auto outer = base::make_unique_q<RpWidget>(_widget.get());
+	const auto container = outer.get();
+	_widget->showInner(std::move(outer));
+	_webviewParent = container;
+
+	createWebviewBottom();
+
+	container->show();
 	_webview = std::make_unique<WebviewWithLifetime>(
 		container,
 		Webview::WindowConfig{
+			.opaqueBg = params.opaqueBg,
 			.userDataPath = _userDataPath,
 		});
 	const auto raw = &_webview->window;
 
+	const auto bottom = _webviewBottom.get();
 	QObject::connect(container, &QObject::destroyed, [=] {
 		if (_webview && &_webview->window == raw) {
-			_webview = nullptr;
+			base::take(_webview);
 			if (_webviewProgress) {
 				hideWebviewProgress();
 				if (_progress && !_progress->shown) {
@@ -597,10 +617,27 @@ bool Panel::createWebview() {
 	if (!raw->widget()) {
 		return false;
 	}
+	QObject::connect(raw->widget(), &QObject::destroyed, [=] {
+		const auto parent = _webviewParent.data();
+		if (!_webview
+			|| &_webview->window != raw
+			|| !parent
+			|| _widget->inner() != parent) {
+			// If we destroyed _webview ourselves,
+			// or if we changed _widget->inner ourselves,
+			// we don't show any message, nothing crashed.
+			return;
+		}
+		crl::on_main(this, [=] {
+			showCriticalError({ "Error: WebView has crashed." });
+		});
+	});
 
 	container->geometryValue(
 	) | rpl::start_with_next([=](QRect geometry) {
-		raw->widget()->setGeometry(geometry);
+		if (raw->widget()) {
+			raw->widget()->setGeometry(geometry);
+		}
 	}, _webview->lifetime);
 
 	raw->setMessageHandler([=](const QJsonDocument &message) {
@@ -622,6 +659,8 @@ bool Panel::createWebview() {
 			processMainButtonMessage(arguments);
 		} else if (command == "web_app_setup_back_button") {
 			processBackButtonMessage(arguments);
+		} else if (command == "web_app_setup_settings_button") {
+			processSettingsButtonMessage(arguments);
 		} else if (command == "web_app_request_theme") {
 			_themeUpdateForced.fire({});
 		} else if (command == "web_app_request_viewport") {
@@ -644,11 +683,13 @@ bool Panel::createWebview() {
 			setupClosingBehaviour(arguments);
 		} else if (command == "web_app_read_text_from_clipboard") {
 			requestClipboardText(arguments);
+		} else if (command == "web_app_set_header_color") {
+			processHeaderColor(arguments);
 		}
 	});
 
 	raw->setNavigationStartHandler([=](const QString &uri, bool newWindow) {
-		if (_delegate->botHandleLocalUri(uri)) {
+		if (_delegate->botHandleLocalUri(uri, false)) {
 			return false;
 		} else if (newWindow) {
 			return true;
@@ -668,6 +709,10 @@ postEvent: function(eventType, eventData) {
 	}
 }
 };)");
+
+	if (!_webview) {
+		return false;
+	}
 
 	setupProgressGeometry();
 
@@ -716,8 +761,9 @@ void Panel::switchInlineQueryMessage(const QJsonObject &args) {
 		u"groups"_q,
 		u"channels"_q,
 	};
+	const auto typeArray = args["chat_types"].toArray();
 	auto types = std::vector<QString>();
-	for (const auto &value : args["chat_types"].toArray()) {
+	for (const auto &value : typeArray) {
 		const auto type = value.toString();
 		if (valid.contains(type)) {
 			types.push_back(type);
@@ -733,16 +779,17 @@ void Panel::switchInlineQueryMessage(const QJsonObject &args) {
 
 void Panel::openTgLink(const QJsonObject &args) {
 	if (args.isEmpty()) {
+		LOG(("BotWebView Error: Bad arguments in 'web_app_open_tg_link'."));
 		_delegate->botClose();
 		return;
 	}
 	const auto path = args["path_full"].toString();
 	if (path.isEmpty()) {
-		LOG(("BotWebView Error: Bad 'path_full' in openTgLink."));
+		LOG(("BotWebView Error: Bad 'path_full' in 'web_app_open_tg_link'."));
 		_delegate->botClose();
 		return;
 	}
-	_delegate->botHandleLocalUri("https://t.me" + path);
+	_delegate->botHandleLocalUri("https://t.me" + path, true);
 }
 
 void Panel::openExternalLink(const QJsonObject &args) {
@@ -792,8 +839,9 @@ void Panel::openPopup(const QJsonObject &args) {
 		{ "cancel", Type::Cancel },
 		{ "destructive", Type::Destructive },
 	};
+	const auto buttonArray = args["buttons"].toArray();
 	auto buttons = std::vector<Webview::PopupArgs::Button>();
-	for (const auto button : args["buttons"].toArray()) {
+	for (const auto button : buttonArray) {
 		const auto fields = button.toObject();
 		const auto i = types.find(fields["type"].toString());
 		if (i == end(types)) {
@@ -1042,6 +1090,18 @@ void Panel::processMainButtonMessage(const QJsonObject &args) {
 		return;
 	}
 
+	const auto shown = [&] {
+		return _mainButton && !_mainButton->isHidden();
+	};
+	const auto wasShown = shown();
+	const auto guard = gsl::finally([&] {
+		if (shown() != wasShown) {
+			crl::on_main(this, [=] {
+				sendViewport();
+			});
+		}
+	});
+
 	if (!_mainButton) {
 		if (args["is_visible"].toBool()) {
 			createMainButton();
@@ -1084,6 +1144,26 @@ void Panel::processBackButtonMessage(const QJsonObject &args) {
 	_widget->setBackAllowed(args["is_visible"].toBool());
 }
 
+void Panel::processSettingsButtonMessage(const QJsonObject &args) {
+	_hasSettingsButton = args["is_visible"].toBool();
+}
+
+void Panel::processHeaderColor(const QJsonObject &args) {
+	if (const auto color = ParseColor(args["color"].toString())) {
+		_widget->overrideTitleColor(color);
+		_headerColorLifetime.destroy();
+	} else if (args["color_key"].toString() == u"secondary_bg_color"_q) {
+		_widget->overrideTitleColor(st::boxDividerBg->c);
+		_headerColorLifetime = style::PaletteChanged(
+		) | rpl::start_with_next([=] {
+			_widget->overrideTitleColor(st::boxDividerBg->c);
+		});
+	} else {
+		_widget->overrideTitleColor(std::nullopt);
+		_headerColorLifetime.destroy();
+	}
+}
+
 void Panel::createMainButton() {
 	_mainButton = std::make_unique<Button>(
 		_widget.get(),
@@ -1108,7 +1188,7 @@ void Panel::createMainButton() {
 		}
 		button->move(inner.x(), inner.y() + inner.height() - height);
 		if (const auto raw = _webviewParent.data()) {
-			raw->resize(inner.width(), inner.height() - height);
+			raw->setFixedSize(inner.width(), inner.height() - height);
 		}
 		button->resizeToWidth(inner.width());
 		_webviewBottom->setVisible(!shown);
@@ -1174,6 +1254,7 @@ void Panel::updateThemeParams(const Webview::ThemeParams &params) {
 		return;
 	}
 	_webview->window.updateTheme(
+		params.opaqueBg,
 		params.scrollBg,
 		params.scrollBgOver,
 		params.scrollBarBg,
@@ -1228,17 +1309,13 @@ void Panel::showWebviewError(
 	rich.append("\n\n");
 	switch (information.error) {
 	case Error::NoWebview2: {
-		const auto command = QString(QChar(TextCommand));
-		const auto text = tr::lng_payments_webview_install_edge(
+		rich.append(tr::lng_payments_webview_install_edge(
 			tr::now,
 			lt_link,
-			command);
-		const auto parts = text.split(command);
-		rich.append(parts.value(0))
-			.append(Text::Link(
+			Text::Link(
 				"Microsoft Edge WebView2 Runtime",
-				"https://go.microsoft.com/fwlink/p/?LinkId=2124703"))
-			.append(parts.value(1));
+				"https://go.microsoft.com/fwlink/p/?LinkId=2124703"),
+			Ui::Text::WithEntities));
 	} break;
 	case Error::NoWebKitGTK:
 		rich.append(tr::lng_payments_webview_install_webkit(tr::now));

@@ -152,6 +152,9 @@ public:
 	void listSendBotCommand(
 		const QString &command,
 		const FullMsgId &context) override;
+	void listSearch(
+		const QString &query,
+		const FullMsgId &context) override;
 	void listHandleViaClick(not_null<UserData*> bot) override;
 	not_null<Ui::ChatTheme*> listChatTheme() override;
 	CopyRestrictionType listCopyRestrictionType(HistoryItem *item) override;
@@ -208,8 +211,11 @@ private:
 	void showAtEnd();
 	void showAtPosition(
 		Data::MessagePosition position,
-		FullMsgId originItemId = {},
-		anim::type animated = anim::type::normal);
+		FullMsgId originItemId = {});
+	void showAtPosition(
+		Data::MessagePosition position,
+		FullMsgId originItemId,
+		const Window::SectionShow &params);
 	void finishSending();
 
 	void setupComposeControls();
@@ -243,7 +249,7 @@ private:
 		mtpRequestId *const saveEditMsgRequestId);
 	void chooseAttach(std::optional<bool> overrideSendImagesAsPhotos);
 	[[nodiscard]] SendMenu::Type sendMenuType() const;
-	[[nodiscard]] MsgId replyToId() const;
+	[[nodiscard]] FullReplyTo replyTo() const;
 	[[nodiscard]] HistoryItem *lookupRoot() const;
 	[[nodiscard]] Data::ForumTopic *lookupTopic();
 	[[nodiscard]] bool computeAreComments() const;
@@ -252,7 +258,7 @@ private:
 	void pushReplyReturn(not_null<HistoryItem*> item);
 	void checkReplyReturns();
 	void recountChatWidth();
-	void replyToMessage(FullMsgId itemId);
+	void replyToMessage(FullReplyTo id);
 	void refreshTopBarActiveChat();
 	void refreshUnreadCountBadge(std::optional<int> count);
 
@@ -371,13 +377,14 @@ private:
 
 };
 
-
 class RepliesMemento final : public Window::SectionMemento {
 public:
 	RepliesMemento(
 		not_null<History*> history,
 		MsgId rootId,
-		MsgId highlightId = 0);
+		MsgId highlightId = 0,
+		const TextWithEntities &highlightPart = {},
+		int highlightPartOffsetHint = 0);
 	explicit RepliesMemento(
 		not_null<HistoryItem*> commentsItem,
 		MsgId commentId = 0);
@@ -421,8 +428,14 @@ public:
 	[[nodiscard]] not_null<ListMemento*> list() {
 		return &_list;
 	}
-	[[nodiscard]] MsgId getHighlightId() const {
+	[[nodiscard]] MsgId highlightId() const {
 		return _highlightId;
+	}
+	[[nodiscard]] const TextWithEntities &highlightPart() const {
+		return _highlightPart;
+	}
+	[[nodiscard]] int highlightPartOffsetHint() const {
+		return _highlightPartOffsetHint;
 	}
 
 private:
@@ -430,6 +443,8 @@ private:
 
 	const not_null<History*> _history;
 	MsgId _rootId = 0;
+	const TextWithEntities _highlightPart;
+	const int _highlightPartOffsetHint = 0;
 	const MsgId _highlightId = 0;
 	ListMemento _list;
 	std::shared_ptr<Data::RepliesList> _replies;

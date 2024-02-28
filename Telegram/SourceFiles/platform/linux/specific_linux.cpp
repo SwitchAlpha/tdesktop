@@ -11,6 +11,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "base/platform/base_platform_info.h"
 #include "base/platform/linux/base_linux_dbus_utilities.h"
 #include "base/platform/linux/base_linux_xdp_utilities.h"
+#include "ui/platform/ui_platform_window_title.h"
 #include "platform/linux/linux_desktop_environment.h"
 #include "platform/linux/linux_wayland_integration.h"
 #include "lang/lang_keys.h"
@@ -67,8 +68,7 @@ void PortalAutostart(bool enabled, Fn<void(bool)> done) {
 				Gio::DBus::BusType::SESSION);
 		} catch (const std::exception &e) {
 			if (done) {
-				LOG(("Portal Autostart Error: %1").arg(
-					QString::fromStdString(e.what())));
+				LOG(("Portal Autostart Error: %1").arg(e.what()));
 			}
 			return Glib::RefPtr<Gio::DBus::Connection>();
 		}
@@ -143,8 +143,7 @@ void PortalAutostart(bool enabled, Fn<void(bool)> done) {
 					}
 				} catch (const std::exception &e) {
 					if (done) {
-						LOG(("Portal Autostart Error: %1").arg(
-							QString::fromStdString(e.what())));
+						LOG(("Portal Autostart Error: %1").arg(e.what()));
 						done(false);
 					}
 				}
@@ -173,8 +172,7 @@ void PortalAutostart(bool enabled, Fn<void(bool)> done) {
 					connection->call_finish(result);
 				} catch (const std::exception &e) {
 					if (done) {
-						LOG(("Portal Autostart Error: %1").arg(
-							QString::fromStdString(e.what())));
+						LOG(("Portal Autostart Error: %1").arg(e.what()));
 						done(false);
 					}
 
@@ -282,10 +280,15 @@ bool GenerateDesktopFile(
 			}
 		}
 
+		if (!args.isEmpty()
+				&& target->has_key("Desktop Entry", "DBusActivatable")) {
+			target->remove_key("Desktop Entry", "DBusActivatable");
+		}
+
 		target->save_to_file(targetFile.toStdString());
 	} catch (const std::exception &e) {
 		if (!silent) {
-			LOG(("App Error: %1").arg(QString::fromStdString(e.what())));
+			LOG(("App Error: %1").arg(e.what()));
 		}
 		return false;
 	}
@@ -377,7 +380,7 @@ bool GenerateServiceFile(bool silent = false) {
 		target->save_to_file(targetFile.toStdString());
 	} catch (const std::exception &e) {
 		if (!silent) {
-			LOG(("App Error: %1").arg(QString::fromStdString(e.what())));
+			LOG(("App Error: %1").arg(e.what()));
 		}
 		return false;
 	}
@@ -451,28 +454,30 @@ void SetApplicationIcon(const QIcon &icon) {
 QString SingleInstanceLocalServerName(const QString &hash) {
 #if defined Q_OS_LINUX && QT_VERSION >= QT_VERSION_CHECK(6, 2, 0)
 	if (KSandbox::isSnap()) {
-		return u"snap.telegram-desktop."_q + hash;
+		return u"snap."_q
+			+ qEnvironmentVariable("SNAP_INSTANCE_NAME")
+			+ '.'
+			+ hash;
 	}
-	return hash + '-' + cGUIDStr();
+	return hash + '-' + QCoreApplication::applicationName();
 #else // Q_OS_LINUX && Qt >= 6.2.0
-	return QDir::tempPath() + '/' + hash + '-' + cGUIDStr();
+	return QDir::tempPath()
+		+ '/'
+		+ hash
+		+ '-'
+		+ QCoreApplication::applicationName();
 #endif // !Q_OS_LINUX || Qt < 6.2.0
 }
 
 #if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
 std::optional<bool> IsDarkMode() {
-	try {
-		const auto result = base::Platform::XDP::ReadSetting(
-			"org.freedesktop.appearance",
-			"color-scheme");
+	const auto result = base::Platform::XDP::ReadSetting<uint>(
+		"org.freedesktop.appearance",
+		"color-scheme");
 
-		if (result.has_value()) {
-			return result->get_dynamic<uint>() == 1;
-		}
-	} catch (...) {
-	}
-
-	return std::nullopt;
+	return result.has_value()
+		? std::make_optional(*result == 1)
+		: std::nullopt;
 }
 #endif // Qt < 6.5.0
 
@@ -532,6 +537,15 @@ bool SkipTaskbarSupported() {
 #endif // !DESKTOP_APP_DISABLE_X11_INTEGRATION
 
 	return false;
+}
+
+bool RunInBackground() {
+	using Ui::Platform::TitleControl;
+	const auto layout = Ui::Platform::TitleControlsLayout();
+	return (ranges::contains(layout.left, TitleControl::Close)
+		|| ranges::contains(layout.right, TitleControl::Close))
+		&& !ranges::contains(layout.left, TitleControl::Minimize)
+		&& !ranges::contains(layout.right, TitleControl::Minimize);
 }
 
 QString ExecutablePathForShortcuts() {
@@ -643,7 +657,7 @@ void start() {
 	Webview::WebKitGTK::SetSocketPath(u"%1/%2-%3-webview-%4"_q.arg(
 		QDir::tempPath(),
 		h,
-		cGUIDStr(),
+		QCoreApplication::applicationName(),
 		u"%1"_q).toStdString());
 
 	InstallLauncher();

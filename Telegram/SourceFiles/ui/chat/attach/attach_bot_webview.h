@@ -36,10 +36,10 @@ struct MainButtonArgs {
 };
 
 enum class MenuButton {
-	None           = 0x00,
-	Settings       = 0x01,
-	OpenBot        = 0x02,
-	RemoveFromMenu = 0x04,
+	None               = 0x00,
+	OpenBot            = 0x01,
+	RemoveFromMenu     = 0x02,
+	RemoveFromMainMenu = 0x04,
 };
 inline constexpr bool is_flag_type(MenuButton) { return true; }
 using MenuButtons = base::flags<MenuButton>;
@@ -54,7 +54,7 @@ struct CustomMethodRequest {
 class Delegate {
 public:
 	virtual Webview::ThemeParams botThemeParams() = 0;
-	virtual bool botHandleLocalUri(QString uri) = 0;
+	virtual bool botHandleLocalUri(QString uri, bool keepOpen) = 0;
 	virtual void botHandleInvoice(QString slug) = 0;
 	virtual void botHandleMenuButton(MenuButton button) = 0;
 	virtual void botSendData(QByteArray data) = 0;
@@ -105,7 +105,8 @@ private:
 	struct Progress;
 	struct WebviewWithLifetime;
 
-	bool createWebview();
+	bool createWebview(const Webview::ThemeParams &params);
+	void createWebviewBottom();
 	void showWebviewProgress();
 	void hideWebviewProgress();
 	void setTitle(rpl::producer<QString> title);
@@ -113,6 +114,8 @@ private:
 	void switchInlineQueryMessage(const QJsonObject &args);
 	void processMainButtonMessage(const QJsonObject &args);
 	void processBackButtonMessage(const QJsonObject &args);
+	void processSettingsButtonMessage(const QJsonObject &args);
+	void processHeaderColor(const QJsonObject &args);
 	void openTgLink(const QJsonObject &args);
 	void openExternalLink(const QJsonObject &args);
 	void openInvoice(const QJsonObject &args);
@@ -143,15 +146,18 @@ private:
 	QString _userDataPath;
 	const not_null<Delegate*> _delegate;
 	bool _closeNeedConfirmation = false;
+	bool _hasSettingsButton = false;
 	MenuButtons _menuButtons = {};
 	std::unique_ptr<SeparatePanel> _widget;
 	std::unique_ptr<WebviewWithLifetime> _webview;
 	std::unique_ptr<RpWidget> _webviewBottom;
+	rpl::variable<QString> _bottomText;
 	QPointer<QWidget> _webviewParent;
 	std::unique_ptr<Button> _mainButton;
 	mutable crl::time _mainButtonLastClick = 0;
 	std::unique_ptr<Progress> _progress;
 	rpl::event_stream<> _themeUpdateForced;
+	rpl::lifetime _headerColorLifetime;
 	rpl::lifetime _fgLifetime;
 	rpl::lifetime _bgLifetime;
 	bool _webviewProgress = false;

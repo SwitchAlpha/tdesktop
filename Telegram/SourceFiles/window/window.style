@@ -151,8 +151,6 @@ mainMenuTelegramLabel: FlatLabel(defaultFlatLabel) {
 	textFg: windowSubTextFg;
 	style: TextStyle(defaultTextStyle) {
 		font: semiboldFont;
-		linkFont: semiboldFont;
-		linkFontOver: font(fsize semibold underline);
 	}
 	palette: TextPalette(defaultTextPalette) {
 		linkFg: windowSubTextFg;
@@ -318,6 +316,10 @@ windowArchiveToast: Toast(defaultToast) {
 	minWidth: boxWideWidth;
 	maxWidth: boxWideWidth;
 }
+
+// Windows specific
+
+winQuitIcon: icon {{ "win_quit", windowFg }};
 
 // Mac specific
 

@@ -11,10 +11,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_document.h"
 #include "data/data_document_media.h"
 #include "data/data_file_origin.h"
+#include "data/data_peer.h"
 #include "data/data_photo.h"
 #include "data/data_photo_media.h"
 #include "data/data_session.h"
-#include "data/data_user.h"
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
 #include "media/stories/media_stories_controller.h"
@@ -143,7 +143,7 @@ Sibling::LoaderVideo::LoaderVideo(
 	Fn<void()> update)
 : _video(video)
 , _origin(origin)
-, _update(std::move(                                                                                                                     update))
+, _update(std::move(update))
 , _media(_video->createMediaView()) {
 	_media->goodThumbnailWanted();
 }
@@ -244,8 +244,8 @@ Sibling::Sibling(
 	const Data::StoriesSource &source,
 	StoryId suggestedId)
 : _controller(controller)
-, _id{ source.user->id, LookupShownId(source, suggestedId) }
-, _peer(source.user) {
+, _id{ source.peer->id, LookupShownId(source, suggestedId) }
+, _peer(source.peer) {
 	checkStory();
 	_goodShown.stop();
 }
@@ -305,7 +305,7 @@ bool Sibling::shows(
 		const Data::StoriesSource &source,
 		StoryId suggestedId) const {
 	const auto fullId = FullStoryId{
-		source.user->id,
+		source.peer->id,
 		LookupShownId(source, suggestedId),
 	};
 	return (_id == fullId);
@@ -354,8 +354,6 @@ QImage Sibling::nameImage(const SiblingLayout &layout) {
 		_name.reset();
 		_nameStyle = std::make_unique<style::TextStyle>(style::TextStyle{
 			.font = font,
-			.linkFont = font,
-			.linkFontOver = font,
 		});
 	};
 	const auto text = _peer->isSelf()

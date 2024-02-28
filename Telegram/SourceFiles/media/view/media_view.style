@@ -194,8 +194,6 @@ mediaviewSaveMsgShown: 2000;
 mediaviewSaveMsgHiding: 2500;
 mediaviewSaveMsgStyle: TextStyle(defaultTextStyle) {
 	font: font(16px);
-	linkFont: font(16px);
-	linkFontOver: font(16px underline);
 }
 mediaviewTextPalette: TextPalette(defaultTextPalette) {
 	linkFg: mediaviewTextLinkFg;
@@ -435,10 +433,14 @@ storiesHeaderName: FlatLabel(defaultFlatLabel) {
 storiesHeaderNamePosition: point(50px, 0px);
 storiesHeaderDate: FlatLabel(defaultFlatLabel) {
 	textFg: mediaviewControlFg;
+	palette: TextPalette(defaultTextPalette) {
+		linkFg: mediaviewControlFg;
+	}
 	minWidth: 10px;
 	maxHeight: 20px;
 }
 storiesHeaderDatePosition: point(50px, 17px);
+storiesHeaderRepostWidthMin: 40px;
 storiesShadowTop: icon{{ "mediaview/shadow_bottom-flip_vertical", windowShadowFg }};
 storiesShadowBottom: mediaviewShadowBottom;
 storiesControlsMinWidth: 280px;
@@ -600,6 +602,9 @@ storiesEmojiPan: EmojiPan(defaultEmojiPan) {
 	colorAllLabel: storiesColorAllLabel;
 	removeSet: storiesRemoveSet;
 	boxLabel: storiesBoxLabel;
+	about: FlatLabel(defaultEmojiPanAbout) {
+		textFg: storiesComposeGrayText;
+	}
 	icons: ComposeIcons {
 		settings: icon {{ "emoji/emoji_settings", storiesComposeGrayIcon }};
 
@@ -635,10 +640,6 @@ storiesEmojiPan: EmojiPan(defaultEmojiPan) {
 		stripBubble: icon{
 			{ "chat/reactions_bubble_shadow", windowShadowFg },
 			{ "chat/reactions_bubble", storiesComposeBg },
-		};
-		stripPremiumLocked: icon{
-			{ "chat/reactions_premium_bg", storiesComposeBgRipple },
-			{ "chat/reactions_premium_star", storiesComposeGrayIcon },
 		};
 		stripExpandPanel: icon{
 			{ "chat/reactions_round_big", storiesComposeBgRipple },
@@ -774,6 +775,32 @@ storiesComposeControls: ComposeControls(defaultComposeControls) {
 
 		menu: storiesPopupMenu;
 	}
+	restrictionLabel: FlatLabel(defaultFlatLabel) {
+		minWidth: 12px;
+		textFg: storiesComposeGrayText;
+		align: align(top);
+	}
+	premiumRequired: ComposePremiumRequired {
+		label: FlatLabel(defaultFlatLabel) {
+			minWidth: 12px;
+			textFg: storiesComposeGrayText;
+		}
+		button: RoundButton(defaultActiveButton) {
+			textFg: storiesComposeWhiteText;
+			textFgOver: storiesComposeWhiteText;
+			textBg: groupCallMembersBgRipple;
+			textBgOver: groupCallMembersBgRipple;
+			width: -12px;
+			height: 18px;
+			textTop: 0px;
+			font: font(12px);
+			ripple: storiesComposeRipple;
+		}
+		buttonSkip: 6px;
+		buttonTop: 14px;
+		position: point(37px, 14px);
+		icon: icon{{ "emoji/premium_lock", storiesComposeGrayIcon, point(13px, 14px) }};
+	}
 }
 storiesViewsMenu: PopupMenu(storiesPopupMenuWithIcons) {
 	scrollPadding: margins(0px, 6px, 0px, 4px);
@@ -815,8 +842,6 @@ storiesUnsupportedLabel: FlatLabel(defaultFlatLabel) {
 	textFg: mediaviewControlFg;
 	style: TextStyle(defaultTextStyle) {
 		font: font(14px);
-		linkFont: font(14px);
-		linkFontOver: font(14px underline);
 		lineHeight: 21px;
 	}
 	align: align(top);
@@ -991,3 +1016,35 @@ storiesStealthBoxBottom: 11px;
 storiesStealthToast: Toast(defaultMultilineToast) {
 	maxWidth: 340px;
 }
+
+storiesViewsPosition: point(4px, 29px);
+storiesViewsIcon: icon{{ "mediaview/views", storiesComposeGrayText }};
+storiesViewsText: FlatLabel(defaultFlatLabel) {
+	textFg: storiesComposeGrayText;
+}
+storiesViewsTextPosition: point(26px, 14px);
+
+storiesLikesPosition: point(0px, 29px);
+storiesLikesIcon: icon {{ "chat/input_like", storiesComposeWhiteText }};
+storiesLikesText: FlatLabel(defaultFlatLabel) {
+	textFg: storiesComposeWhiteText;
+	style: semiboldTextStyle;
+}
+storiesLikesTextPosition: point(41px, 14px);
+storiesLikesTextRightSkip: 8px;
+storiesLikesEmptyRightSkip: 2px;
+
+storiesLikeCountStyle: TextStyle(defaultTextStyle) {
+	font: font(32px semibold);
+}
+storiesChangelogFooterWidthMin: 240px;
+
+storiesRepostSimpleStyle: QuoteStyle(defaultQuoteStyle) {
+	padding: margins(8px, 2px, 8px, 2px);
+	verticalSkip: 4px;
+	outline: 0px;
+	radius: 10px;
+}
+storiesRepostIcon: icon {{ "mediaview/mini_repost", windowFg }};
+storiesRepostIconPadding: margins(0px, 4px, 2px, 0px);
+storiesRepostUserpicPadding: margins(0px, 1px, 4px, 0px);

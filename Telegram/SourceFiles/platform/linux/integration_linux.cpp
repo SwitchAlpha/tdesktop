@@ -10,6 +10,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "platform/platform_integration.h"
 #include "base/platform/base_platform_info.h"
 #include "base/platform/linux/base_linux_xdp_utilities.h"
+#include "window/notifications_manager.h"
 #include "core/sandbox.h"
 #include "core/application.h"
 #include "core/core_settings.h"
@@ -54,17 +55,17 @@ public:
 		});
 	}
 
-	void open_(GFile **files, int n_files, const char*) noexcept override {
-		Core::Sandbox::Instance().customEnterFromEventLoop([&] {
-			for (int i = 0; i < n_files; ++i) {
-				QFileOpenEvent e(
-					QUrl(QString::fromUtf8(g_file_get_uri(files[i]))));
-				QGuiApplication::sendEvent(qApp, &e);
-			}
-		});
+	void open_(
+			gi::Collection<gi::DSpan, ::GFile*, gi::transfer_none_t> files,
+			const gi::cstring_v hint) noexcept override {
+		for (auto file : files) {
+			QFileOpenEvent e(QUrl(QString::fromStdString(file.get_uri())));
+			QGuiApplication::sendEvent(qApp, &e);
+		}
 	}
 
-	void add_platform_data_(GLib::VariantBuilder builder) noexcept override {
+	void add_platform_data_(
+			GLib::VariantBuilder_Ref builder) noexcept override {
 		if (Platform::IsWayland()) {
 			const auto token = qgetenv("XDG_ACTIVATION_TOKEN");
 			if (!token.isEmpty()) {
@@ -112,8 +113,7 @@ Application::Application()
 				Glib::create_variant(
 					NotificationId().toTuple()
 				).get_type().gobj_copy(),
-				gi::transfer_full,
-				gi::direction_out
+				gi::transfer_full
 			);
 		} catch (...) {
 			return GLib::VariantType();
@@ -174,7 +174,7 @@ gi::ref_ptr<Application> MakeApplication() {
 	const auto result = gi::make_ref<Application>();
 	if (const auto registered = result->register_(); !registered) {
 		LOG(("App Error: Failed to register: %1").arg(
-			QString::fromStdString(registered.error().message_())));
+			registered.error().message_().c_str()));
 		return nullptr;
 	}
 	return result;
@@ -207,24 +207,17 @@ LinuxIntegration::LinuxIntegration()
 		base::Platform::XDP::kService,
 		base::Platform::XDP::kObjectPath,
 		nullptr))
-, _darkModeWatcher([](
-	const Glib::ustring &group,
-	const Glib::ustring &key,
-	const Glib::VariantBase &value) {
-	if (group == "org.freedesktop.appearance"
-		&& key == "color-scheme") {
+, _darkModeWatcher(
+	"org.freedesktop.appearance",
+	"color-scheme",
+	[](uint value) {
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
 		QWindowSystemInterface::handleThemeChange();
 #else // Qt >= 6.5.0
 		Core::Sandbox::Instance().customEnterFromEventLoop([&] {
-			try {
-				Core::App().settings().setSystemDarkMode(
-					value.get_dynamic<uint>() == 1);
-			} catch (...) {
-			}
+			Core::App().settings().setSystemDarkMode(value == 1);
 		});
 #endif // Qt < 6.5.0
-	}
 }) {
 	LOG(("Icon theme: %1").arg(QIcon::themeName()));
 	LOG(("Fallback icon theme: %1").arg(QIcon::fallbackThemeName()));
@@ -245,11 +238,7 @@ void LinuxIntegration::initInhibit() {
 		return;
 	}
 
-	auto uniqueName = _inhibitProxy
-		.get_connection()
-		.get_unique_name()
-		.value_or("");
-
+	std::string uniqueName = _inhibitProxy.get_connection().get_unique_name();
 	uniqueName.erase(0, 1);
 	uniqueName.replace(uniqueName.find('.'), 1, 1, '_');
 
@@ -283,20 +272,18 @@ void LinuxIntegration::initInhibit() {
 		);
 	});
 
-	const auto options = std::array{
-		GLib::Variant::new_dict_entry(
-			GLib::Variant::new_string("handle_token"),
-			GLib::Variant::new_variant(
-				GLib::Variant::new_string(handleToken))),
-		GLib::Variant::new_dict_entry(
-			GLib::Variant::new_string("session_handle_token"),
-			GLib::Variant::new_variant(
-				GLib::Variant::new_string(sessionHandleToken))),
-	};
-
 	inhibit().call_create_monitor(
-		{},
-		GLib::Variant::new_array(options.data(), options.size()),
+		"",
+		GLib::Variant::new_array({
+			GLib::Variant::new_dict_entry(
+				GLib::Variant::new_string("handle_token"),
+				GLib::Variant::new_variant(
+					GLib::Variant::new_string(handleToken))),
+			GLib::Variant::new_dict_entry(
+				GLib::Variant::new_string("session_handle_token"),
+				GLib::Variant::new_variant(
+					GLib::Variant::new_string(sessionHandleToken))),
+		}),
 		nullptr);
 }
 

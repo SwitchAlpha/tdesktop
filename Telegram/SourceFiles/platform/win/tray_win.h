@@ -57,7 +57,9 @@ public:
 	[[nodiscard]] static QPixmap IconWithCounter(
 		Window::CounterLayerArgs &&args,
 		bool smallIcon,
+		bool monochrome,
 		bool supportMode);
+	[[nodiscard]] static QString QuitJumpListIconPath();
 
 private:
 	base::unique_qptr<QPlatformSystemTrayIcon> _icon;
@@ -71,5 +73,7 @@ private:
 	rpl::lifetime _lifetime;
 
 };
+
+void RefreshTaskbarThemeValue();
 
 } // namespace Platform

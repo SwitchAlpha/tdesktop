@@ -51,10 +51,6 @@ public:
 	void peerListFinishSelectedRowsBunch() override;
 	void peerListSetDescription(
 		object_ptr<Ui::FlatLabel> description) override;
-	void peerListShowBox(
-		object_ptr<Ui::BoxContent> content,
-		Ui::LayerOptions options = Ui::LayerOption::KeepOther) override;
-	void peerListHideLayer() override;
 	std::shared_ptr<Main::SessionShow> peerListUiShow() override;
 
 };
@@ -90,14 +86,6 @@ void ListDelegate::peerListFinishSelectedRowsBunch() {
 void ListDelegate::peerListSetDescription(
 		object_ptr<Ui::FlatLabel> description) {
 	description.destroy();
-}
-
-void ListDelegate::peerListShowBox(
-	object_ptr<Ui::BoxContent> content,
-	Ui::LayerOptions options) {
-}
-
-void ListDelegate::peerListHideLayer() {
 }
 
 std::shared_ptr<Main::SessionShow> ListDelegate::peerListUiShow() {
@@ -384,10 +372,7 @@ void ListController::restoreState(std::unique_ptr<PeerListState> state) {
 
 std::unique_ptr<PeerListRow> ListController::createRestoredRow(
 		not_null<PeerData*> peer) {
-	if (const auto user = peer->asUser()) {
-		return createRow(user);
-	}
-	return nullptr;
+	return createRow(peer);
 }
 
 void ListController::rowClicked(not_null<PeerListRow*> row) {
